@@ -1,225 +1,28 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
+// Keep only datasource and generator
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// ============================================
-// COMPANY MANAGEMENT
-// ============================================
-
-model Company {
-  id          String   @id @default(cuid())
-  name        String
-  address     String?
-  phone       String?
-  email       String?  @unique
-  abn         String?  @unique // Australian Business Number
-  tfn         String?  // Tax File Number (if applicable)
-  logo        String?
-  isActive    Boolean  @default(true)
-  
-  // Company type
-  companyType String   @default("farm") // farm, contractor, labour_hire, packing_company
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  employees   Employee[]
-  payslips    Payslip[]
-  users       UserCompany[]
-  settings    CompanySetting[]
-  departments Department[]
-  workLocations WorkLocation[]
-
-  @@index([isActive])
-  @@index([abn])
+generator client {
+  provider = "prisma-client-js"
 }
-
-// ============================================
-// WORK LOCATION MANAGEMENT
-// ============================================
-
-model WorkLocation {
-  id          String   @id @default(cuid())
-  companyId   String
-  
-  // Location Details
-  name        String   // e.g., "Smith's Farm", "Johnson Vineyard", "Warehouse A"
-  type        String   @default("farm") // farm, warehouse, packing_shed, vineyard, orchard
-  address     String?
-  suburb      String?
-  state       String?  // QLD, NSW, VIC, etc.
-  postcode    String?
-  
-  // Farm-specific (optional)
-  cropType    String?  // e.g., "Strawberry", "Tomato", "Grape", "Blueberry"
-  farmSize    String?  // e.g., "50 hectares"
-  
-  // Contact
-  contactPerson String?
-  contactPhone  String?
-  contactEmail  String?
-  
-  // Details
-  description String?
-  notes       String?
-  isActive    Boolean  @default(true)
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  workSessions WorkSession[]
-  employeeAssignments EmployeeLocationAssignment[]
-
-  @@unique([companyId, name])
-  @@index([companyId])
-  @@index([isActive])
-  @@index([state])
-}
-
-// ============================================
-// EMPLOYEE LOCATION ASSIGNMENT (Weekly/Daily assignments)
-// ============================================
-
-model EmployeeLocationAssignment {
-  id              String       @id @default(cuid())
-  employeeId      String
-  workLocationId  String
-  
-  // Assignment Period
-  startDate       DateTime
-  endDate         DateTime?    // null means ongoing
-  
-  // Assignment Type
-  assignmentType  String       @default("temporary") // temporary, permanent
-  
-  // Position at this location (can differ from main position)
-  positionAtSite  String?      // e.g., "Picker", "Packer", "Supervisor"
-  
-  // Pay rate can differ by location
-  hourlyRateOverride  Decimal? @db.Decimal(10, 2)
-  pieceRateOverride   Decimal? @db.Decimal(10, 4)
-  
-  // Status
-  isActive        Boolean      @default(true)
-  
-  // Notes
-  notes           String?
-  
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-
-  // Relations
-  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  workLocation    WorkLocation @relation(fields: [workLocationId], references: [id], onDelete: Cascade)
-
-  @@index([employeeId])
-  @@index([workLocationId])
-  @@index([startDate, endDate])
-  @@index([isActive])
-}
-
-// ============================================
-// WORK SESSION TRACKING (Daily work records)
-// ============================================
-
-model WorkSession {
-  id              String       @id @default(cuid())
-  employeeId      String
-  workLocationId  String
-  
-  // Date & Time
-  workDate        DateTime     // Date of work
-  startTime       DateTime     // Actual start time
-  endTime         DateTime?    // Actual end time
-  
-  // Hours calculation
-  totalHours      Decimal?     @db.Decimal(5, 2)
-  breakMinutes    Int          @default(0) // Unpaid breaks
-  workMinutes     Int?         // Total work minutes (excluding breaks)
-  
-  // Hourly work
-  hourlyRate      Decimal?     @db.Decimal(10, 2)
-  casualLoading   Decimal?     @db.Decimal(5, 2) // 0.25 = 25%
-  hourlyEarnings  Decimal?     @db.Decimal(10, 2)
-  
-  // Piece rate work
-  quantityPicked  Decimal?     @db.Decimal(10, 2)
-  unit            String?      // kg, bucket, bin, box, tray
-  pieceRate       Decimal?     @db.Decimal(10, 4)
-  pieceEarnings   Decimal?     @db.Decimal(10, 2)
-  
-  // Overtime
-  overtimeHours   Decimal?     @db.Decimal(5, 2)
-  overtimeRate    Decimal?     @db.Decimal(10, 2)
-  overtimeEarnings Decimal?    @db.Decimal(10, 2)
-  
-  // Total for this session
-  grossEarnings   Decimal      @db.Decimal(10, 2)
-  
-  // Work details
-  taskType        String?      // "picking", "packing", "pruning", "planting"
-  cropType        String?      // Can override location's default crop
-  rowNumber       String?      // For tracking which area they worked
-  
-  // Status & Approval
-  status          String       @default("pending") // pending, approved, rejected, paid
-  rejectionReason String?
-  
-  // Supervisor/Manager approval
-  approvedById    String?
-  approvedAt      DateTime?
-  
-  // Notes
-  employeeNotes   String?      // Worker's notes
-  supervisorNotes String?      // Supervisor's notes
-  
-  // Weather/conditions (useful for piece rate disputes)
-  weatherCondition String?     // sunny, rainy, hot, cold
-  
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-
-  // Relations
-  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  workLocation    WorkLocation @relation(fields: [workLocationId], references: [id], onDelete: Cascade)
-  approvedBy      User?        @relation(fields: [approvedById], references: [id])
-
-  @@index([employeeId])
-  @@index([workLocationId])
-  @@index([workDate])
-  @@index([status])
-  @@index([createdAt])
-}
-
-// ============================================
-// USER, ROLE & PERMISSION MANAGEMENT
-// ============================================
-
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
   name          String
-  password      String    // Remember to hash with bcrypt!
+  password      String
   avatar        String?
   isActive      Boolean   @default(true)
-  isSuperAdmin  Boolean   @default(false) // Can see all companies
+  isSuperAdmin  Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   lastLoginAt   DateTime?
 
-  // Relations
-  companies     UserCompany[]
-  createdPayslips Payslip[] @relation("CreatedBy")
-  approvedPayslips Payslip[] @relation("ApprovedBy")
-  approvedWorkSessions WorkSession[]
+  workSessionsApproved WorkSession[] @relation("ApprovedBy")
+  payslipsCreated      Payslip[]     @relation("CreatedBy")
+  payslipsApproved     Payslip[]     @relation("ApprovedBy")
+  userCompanies        UserCompany[]
 
   @@index([email])
   @@index([isActive])
@@ -227,51 +30,72 @@ model User {
 
 model Role {
   id          String   @id @default(cuid())
-  name        String   @unique // e.g., "Admin", "HR Manager", "Supervisor", "Employee"
+  name        String   @unique
   description String?
-  isSystem    Boolean  @default(false) // System roles cannot be deleted
+  isSystem    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
-  permissions RolePermission[]
-  users       UserCompany[]
+  rolePermissions RolePermission[]
+  userCompanies   UserCompany[]
 
   @@index([name])
 }
 
 model Permission {
   id          String   @id @default(cuid())
-  name        String   @unique // e.g., "payslip.create", "employee.view", "worksession.approve"
+  name        String   @unique
   description String?
-  module      String   // e.g., "payslip", "employee", "company", "worksession", "location"
-  action      String   // e.g., "create", "read", "update", "delete", "approve", "export"
+  module      String
+  action      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
-  roles       RolePermission[]
+  rolePermissions RolePermission[]
 
   @@unique([module, action])
   @@index([module])
 }
 
 model RolePermission {
-  id           String     @id @default(cuid())
+  id           String   @id @default(cuid())
   roleId       String
   permissionId String
-  createdAt    DateTime   @default(now())
+  createdAt    DateTime @default(now())
 
-  // Relations
-  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@unique([roleId, permissionId])
   @@index([roleId])
   @@index([permissionId])
 }
 
-// Junction table for User-Company-Role (many-to-many with role)
+model Company {
+  id          String   @id @default(cuid())
+  name        String
+  address     String?
+  phone       String?
+  email       String?  @unique
+  abn         String?  @unique
+  tfn         String?
+  logo        String?
+  isActive    Boolean  @default(true)
+  companyType String   @default("farm")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workLocations    WorkLocation[]
+  userCompanies    UserCompany[]
+  companySettings  CompanySetting[]
+  departments      Department[]
+  employees        Employee[]
+  payslips         Payslip[]
+
+  @@index([isActive])
+  @@index([abn])
+}
+
 model UserCompany {
   id        String   @id @default(cuid())
   userId    String
@@ -281,10 +105,9 @@ model UserCompany {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id])
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
   @@unique([userId, companyId])
   @@index([userId])
@@ -292,17 +115,13 @@ model UserCompany {
   @@index([roleId])
 }
 
-// ============================================
-// BASE CONFIGURATION / GENERAL SETTINGS
-// ============================================
-
 model GlobalSetting {
   id          String   @id @default(cuid())
-  key         String   @unique // e.g., "app.name", "app.currency", "app.timezone"
+  key         String   @unique
   value       String
-  type        String   @default("string") // "string", "number", "boolean", "json"
+  type        String   @default("string")
   description String?
-  isPublic    Boolean  @default(false) // Can be accessed without auth
+  isPublic    Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -312,113 +131,117 @@ model GlobalSetting {
 model CompanySetting {
   id          String   @id @default(cuid())
   companyId   String
-  key         String   // e.g., "payroll.day", "currency", "tax_rate", "super_rate"
+  key         String
   value       String
-  type        String   @default("string") // "string", "number", "boolean", "json"
+  type        String   @default("string")
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, key])
   @@index([companyId])
   @@index([key])
 }
 
-// ============================================
-// EMPLOYEE MANAGEMENT (WHV WORKER SPECIFIC)
-// ============================================
+model WorkLocation {
+  id            String   @id @default(cuid())
+  companyId     String
+  name          String
+  type          String   @default("farm")
+  address       String?
+  suburb        String?
+  state         String?
+  postcode      String?
+  cropType      String?
+  farmSize      String?
+  contactPerson String?
+  contactPhone  String?
+  contactEmail  String?
+  description   String?
+  notes         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  company                     Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employeeLocationAssignments EmployeeLocationAssignment[]
+  workSessions                WorkSession[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([isActive])
+  @@index([state])
+}
 
 model Department {
-  id          String     @id @default(cuid())
+  id          String   @id @default(cuid())
   companyId   String
   name        String
   description String?
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  // Relations
-  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employees   Employee[]
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees Employee[]
 
   @@unique([companyId, name])
   @@index([companyId])
 }
 
 model Employee {
-  id            String     @id @default(cuid())
-  companyId     String
-  departmentId  String?
-  employeeCode  String     // e.g., "EMP001", "WHV001"
-  
-  // Personal Info
-  firstName     String
-  lastName      String
-  email         String
-  phone         String?
-  address       String?
-  birthDate     DateTime?
-  
-  // Australian Tax & Banking
-  tfn           String?    // Tax File Number
-  abn           String?    // ABN for contractors
-  bankName      String?
-  bsb           String?    // Bank State Branch
-  accountNumber String?
-  accountName   String?
-  
-  // Visa Information (WHV specific)
-  visaType      String?    // e.g., "417", "462", "WHV", "Student", "Permanent Resident"
-  visaNumber    String?
-  visaExpiry    DateTime?
-  passportNumber String?
-  nationality   String?
-  
-  // Tax Residency
-  isAustralianResident Boolean @default(false)
-  claimsTaxFreeThreshold Boolean @default(false)
-  hasHELPDebt   Boolean @default(false) // Higher Education Loan Program
-  
-  // Employment Details
-  position      String
-  employmentType String    @default("casual") // casual, part-time, full-time, contractor
-  joinDate      DateTime
-  endDate       DateTime?
-  
-  // Pay Structure (Default rates - can be overridden per location)
-  paymentMethod String    @default("hourly") // hourly, piece_rate, salary
-  hourlyRate    Decimal?  @db.Decimal(10, 2)
-  casualLoading Decimal   @default(0.25) @db.Decimal(5, 2) // 25% casual loading
-  pieceRateUnit String?   // e.g., "kg", "bucket", "bin", "tray"
-  pieceRate     Decimal?  @db.Decimal(10, 4)
-  
-  // Superannuation
-  superFund     String?
-  superMemberNumber String?
-  superRate     Decimal   @default(0.11) @db.Decimal(5, 4) // 11% super
-  
-  // Emergency Contact
-  emergencyContactName  String?
-  emergencyContactPhone String?
+  id                      String    @id @default(cuid())
+  companyId               String
+  departmentId            String?
+  employeeCode            String
+  firstName               String
+  lastName                String
+  email                   String
+  phone                   String?
+  address                 String?
+  birthDate               DateTime?
+  tfn                     String?
+  abn                     String?
+  bankName                String?
+  bsb                     String?
+  accountNumber           String?
+  accountName             String?
+  visaType                String?
+  visaNumber              String?
+  visaExpiry              DateTime?
+  passportNumber          String?
+  nationality             String?
+  isAustralianResident    Boolean   @default(false)
+  claimsTaxFreeThreshold  Boolean   @default(false)
+  hasHELPDebt             Boolean   @default(false)
+  position                String
+  employmentType          String    @default("casual")
+  joinDate                DateTime
+  endDate                 DateTime?
+  paymentMethod           String    @default("hourly")
+  hourlyRate              Decimal?  @db.Decimal(10, 2)
+  casualLoading           Decimal   @default(0.25) @db.Decimal(5, 2)
+  pieceRateUnit           String?
+  pieceRate               Decimal?  @db.Decimal(10, 4)
+  superFund               String?
+  superMemberNumber       String?
+  superRate               Decimal   @default(0.11) @db.Decimal(5, 4)
+  emergencyContactName    String?
+  emergencyContactPhone   String?
   emergencyContactRelation String?
-  
-  // Status
-  isActive      Boolean   @default(true)
-  
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  isActive                Boolean   @default(true)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
-  // Relations
-  company       Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  department    Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  payslips      Payslip[]
-  workSessions  WorkSession[]
-  locationAssignments EmployeeLocationAssignment[]
-  allowances    EmployeeAllowance[]
-  deductions    EmployeeDeduction[]
+  company                     Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  department                  Department?                  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  employeeLocationAssignments EmployeeLocationAssignment[]
+  workSessions                WorkSession[]
+  payslips                    Payslip[]
+  employeeAllowances          EmployeeAllowance[]
+  employeeDeductions          EmployeeDeduction[]
 
   @@unique([companyId, employeeCode])
   @@unique([companyId, email])
@@ -429,104 +252,86 @@ model Employee {
   @@index([tfn])
 }
 
-// ============================================
-// PAYSLIP MANAGEMENT (Australian specific)
-// ============================================
+model EmployeeLocationAssignment {
+  id                 String    @id @default(cuid())
+  employeeId         String
+  workLocationId     String
+  startDate          DateTime
+  endDate            DateTime?
+  assignmentType     String    @default("temporary")
+  positionAtSite     String?
+  hourlyRateOverride Decimal?  @db.Decimal(10, 2)
+  pieceRateOverride  Decimal?  @db.Decimal(10, 4)
+  isActive           Boolean   @default(true)
+  notes              String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-model Payslip {
-  id              String   @id @default(cuid())
-  companyId       String
-  employeeId      String
-  
-  // Period
-  payPeriodStart  DateTime
-  payPeriodEnd    DateTime
-  payDate         DateTime
-  
-  // Earnings - Ordinary
-  ordinaryHours   Decimal  @db.Decimal(10, 2) @default(0)
-  ordinaryRate    Decimal  @db.Decimal(10, 2) @default(0)
-  ordinaryPay     Decimal  @db.Decimal(10, 2) @default(0)
-  
-  // Casual Loading
-  casualLoading   Decimal  @db.Decimal(10, 2) @default(0)
-  
-  // Overtime
-  overtimeHours   Decimal  @db.Decimal(10, 2) @default(0)
-  overtimeRate    Decimal  @db.Decimal(10, 2) @default(0)
-  overtimePay     Decimal  @db.Decimal(10, 2) @default(0)
-  
-  // Piece rate earnings
-  pieceRateEarnings Decimal @db.Decimal(10, 2) @default(0)
-  
-  // Other allowances
-  totalAllowances Decimal  @db.Decimal(10, 2) @default(0)
-  
-  // Gross Pay (before tax)
-  grossPay        Decimal  @db.Decimal(10, 2)
-  
-  // Deductions
-  paygTax         Decimal  @db.Decimal(10, 2) @default(0) // Pay As You Go tax
-  totalDeductions Decimal  @db.Decimal(10, 2) @default(0)
-  
-  // Superannuation (employer contribution - not deducted from pay)
-  superAmount     Decimal  @db.Decimal(10, 2) @default(0)
-  superRate       Decimal  @db.Decimal(5, 4) @default(0.11)
-  
-  // Net Pay (what employee receives)
-  netPay          Decimal  @db.Decimal(10, 2)
-  
-  // Year-to-date totals (Financial Year: July 1 - June 30)
-  ytdGross        Decimal  @db.Decimal(12, 2) @default(0)
-  ytdTax          Decimal  @db.Decimal(12, 2) @default(0)
-  ytdSuper        Decimal  @db.Decimal(12, 2) @default(0)
-  
-  // Status
-  status          String   @default("draft") // draft, approved, paid, cancelled
-  paymentMethod   String   @default("bank_transfer") // bank_transfer, cash, cheque
-  paymentReference String? // bank transaction reference
-  
-  notes           String?
-  
-  // Audit
-  createdById     String
-  approvedById    String?
-  approvedAt      DateTime?
-  paidAt          DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workLocation WorkLocation @relation(fields: [workLocationId], references: [id], onDelete: Cascade)
 
-  // Relations
-  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  createdBy       User     @relation("CreatedBy", fields: [createdById], references: [id])
-  approvedBy      User?    @relation("ApprovedBy", fields: [approvedById], references: [id])
-  allowances      PayslipAllowance[]
-  deductions      PayslipDeduction[]
-
-  @@unique([companyId, employeeId, payPeriodStart, payPeriodEnd])
-  @@index([companyId])
   @@index([employeeId])
-  @@index([status])
-  @@index([payDate])
+  @@index([workLocationId])
+  @@index([startDate, endDate])
+  @@index([isActive])
 }
 
-// ============================================
-// ALLOWANCES & DEDUCTIONS
-// ============================================
+
+model WorkSession {
+  id               String    @id @default(cuid())
+  employeeId       String
+  workLocationId   String
+  workDate         DateTime
+  startTime        DateTime
+  endTime          DateTime?
+  totalHours       Decimal?  @db.Decimal(5, 2)
+  breakMinutes     Int       @default(0)
+  workMinutes      Int?
+  hourlyRate       Decimal?  @db.Decimal(10, 2)
+  casualLoading    Decimal?  @db.Decimal(5, 2)
+  hourlyEarnings   Decimal?  @db.Decimal(10, 2)
+  quantityPicked   Decimal?  @db.Decimal(10, 2)
+  unit             String?
+  pieceRate        Decimal?  @db.Decimal(10, 4)
+  pieceEarnings    Decimal?  @db.Decimal(10, 2)
+  overtimeHours    Decimal?  @db.Decimal(5, 2)
+  overtimeRate     Decimal?  @db.Decimal(10, 2)
+  overtimeEarnings Decimal?  @db.Decimal(10, 2)
+  grossEarnings    Decimal   @db.Decimal(10, 2)
+  taskType         String?
+  cropType         String?
+  rowNumber        String?
+  status           String    @default("pending")
+  rejectionReason  String?
+  approvedById     String?
+  approvedAt       DateTime?
+  employeeNotes    String?
+  supervisorNotes  String?
+  weatherCondition String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  workLocation WorkLocation  @relation(fields: [workLocationId], references: [id], onDelete: Cascade)
+  approvedBy   User?         @relation("ApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([workLocationId])
+  @@index([workDate])
+  @@index([status])
+  @@index([createdAt])
+}
 
 model AllowanceType {
   id          String   @id @default(cuid())
-  name        String   @unique // e.g., "Overtime", "Travel", "Meal", "Accommodation"
+  name        String   @unique
   description String?
   isActive    Boolean  @default(true)
   isTaxable   Boolean  @default(true)
-  category    String   @default("other") // overtime, meal, travel, accommodation, bonus, other
+  category    String   @default("other")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
   employeeAllowances EmployeeAllowance[]
   payslipAllowances  PayslipAllowance[]
 
@@ -536,14 +341,13 @@ model AllowanceType {
 
 model DeductionType {
   id          String   @id @default(cuid())
-  name        String   @unique // e.g., "Loan Repayment", "Advance", "Uniform", "Accommodation"
+  name        String   @unique
   description String?
   isActive    Boolean  @default(true)
-  category    String   @default("other") // loan, advance, uniform, accommodation, other
+  category    String   @default("other")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Relations
   employeeDeductions EmployeeDeduction[]
   payslipDeductions  PayslipDeduction[]
 
@@ -551,107 +355,128 @@ model DeductionType {
   @@index([category])
 }
 
-// Employee recurring allowances
 model EmployeeAllowance {
-  id              String        @id @default(cuid())
+  id              String    @id @default(cuid())
   employeeId      String
   allowanceTypeId String
-  amount          Decimal       @db.Decimal(10, 2)
-  isRecurring     Boolean       @default(true)
-  isActive        Boolean       @default(true)
+  amount          Decimal   @db.Decimal(10, 2)
+  isRecurring     Boolean   @default(true)
+  isActive        Boolean   @default(true)
   startDate       DateTime
   endDate         DateTime?
   description     String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  // Relations
-  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  allowanceType   AllowanceType @relation(fields: [allowanceTypeId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  allowanceType AllowanceType @relation(fields: [allowanceTypeId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
   @@index([allowanceTypeId])
   @@index([isActive])
 }
 
-// Employee recurring deductions
 model EmployeeDeduction {
-  id              String        @id @default(cuid())
+  id              String    @id @default(cuid())
   employeeId      String
   deductionTypeId String
-  amount          Decimal       @db.Decimal(10, 2)
-  isRecurring     Boolean       @default(true)
-  isActive        Boolean       @default(true)
+  amount          Decimal   @db.Decimal(10, 2)
+  isRecurring     Boolean   @default(true)
+  isActive        Boolean   @default(true)
   startDate       DateTime
   endDate         DateTime?
-  remainingAmount Decimal?      @db.Decimal(10, 2) // for tracking loan repayments
+  remainingAmount Decimal?  @db.Decimal(10, 2)
   description     String?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  // Relations
-  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  deductionType   DeductionType @relation(fields: [deductionTypeId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  deductionType DeductionType @relation(fields: [deductionTypeId], references: [id], onDelete: Restrict)
 
   @@index([employeeId])
   @@index([deductionTypeId])
   @@index([isActive])
 }
 
-// Payslip-specific allowances
+model Payslip {
+  id              String    @id @default(cuid())
+  companyId       String
+  employeeId      String
+  payPeriodStart  DateTime
+  payPeriodEnd    DateTime
+  payDate         DateTime
+  ordinaryHours   Decimal   @default(0) @db.Decimal(10, 2)
+  ordinaryRate    Decimal   @default(0) @db.Decimal(10, 2)
+  ordinaryPay     Decimal   @default(0) @db.Decimal(10, 2)
+  casualLoading   Decimal   @default(0) @db.Decimal(10, 2)
+  overtimeHours   Decimal   @default(0) @db.Decimal(10, 2)
+  overtimeRate    Decimal   @default(0) @db.Decimal(10, 2)
+  overtimePay     Decimal   @default(0) @db.Decimal(10, 2)
+  pieceRateEarnings Decimal @default(0) @db.Decimal(10, 2)
+  totalAllowances Decimal   @default(0) @db.Decimal(10, 2)
+  grossPay        Decimal   @db.Decimal(10, 2)
+  paygTax         Decimal   @default(0) @db.Decimal(10, 2)
+  totalDeductions Decimal   @default(0) @db.Decimal(10, 2)
+  superAmount     Decimal   @default(0) @db.Decimal(10, 2)
+  superRate       Decimal   @default(0.11) @db.Decimal(5, 4)
+  netPay          Decimal   @db.Decimal(10, 2)
+  ytdGross        Decimal   @default(0) @db.Decimal(12, 2)
+  ytdTax          Decimal   @default(0) @db.Decimal(12, 2)
+  ytdSuper        Decimal   @default(0) @db.Decimal(12, 2)
+  status          String    @default("draft")
+  paymentMethod   String    @default("bank_transfer")
+  paymentReference String?
+  notes           String?
+  createdById     String
+  approvedById    String?
+  approvedAt      DateTime?
+  paidAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy User?  @relation("ApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  payslipAllowances PayslipAllowance[]
+  payslipDeductions PayslipDeduction[]
+
+  @@unique([companyId, employeeId, payPeriodStart, payPeriodEnd])
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([status])
+  @@index([payDate])
+}
+
 model PayslipAllowance {
-  id              String        @id @default(cuid())
+  id              String   @id @default(cuid())
   payslipId       String
   allowanceTypeId String
-  amount          Decimal       @db.Decimal(10, 2)
-  hours           Decimal?      @db.Decimal(10, 2) // for overtime
-  rate            Decimal?      @db.Decimal(10, 2)
+  amount          Decimal  @db.Decimal(10, 2)
+  hours           Decimal? @db.Decimal(10, 2)
+  rate            Decimal? @db.Decimal(10, 2)
   description     String?
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime @default(now())
 
-  // Relations
-  payslip         Payslip       @relation(fields: [payslipId], references: [id], onDelete: Cascade)
-  allowanceType   AllowanceType @relation(fields: [allowanceTypeId], references: [id])
+  payslip       Payslip       @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  allowanceType AllowanceType @relation(fields: [allowanceTypeId], references: [id], onDelete: Restrict)
 
   @@index([payslipId])
   @@index([allowanceTypeId])
 }
 
-// Payslip-specific deductions
 model PayslipDeduction {
-  id              String        @id @default(cuid())
+  id              String   @id @default(cuid())
   payslipId       String
   deductionTypeId String
-  amount          Decimal       @db.Decimal(10, 2)
+  amount          Decimal  @db.Decimal(10, 2)
   description     String?
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime @default(now())
 
-  // Relations
-  payslip         Payslip       @relation(fields: [payslipId], references: [id], onDelete: Cascade)
-  deductionType   DeductionType @relation(fields: [deductionTypeId], references: [id])
+  payslip       Payslip       @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  deductionType DeductionType @relation(fields: [deductionTypeId], references: [id], onDelete: Restrict)
 
   @@index([payslipId])
   @@index([deductionTypeId])
-}
-
-// ============================================
-// TAX RATE TABLE (Australian Tax Brackets)
-// ============================================
-
-model TaxBracket {
-  id              String   @id @default(cuid())
-  financialYear   Int      // Financial year ending (e.g., 2024 for FY 2023-24)
-  isResident      Boolean  @default(true)
-  minIncome       Decimal  @db.Decimal(12, 2)
-  maxIncome       Decimal? @db.Decimal(12, 2) // null for highest bracket
-  baseTax         Decimal  @db.Decimal(12, 2)
-  marginalRate    Decimal  @db.Decimal(5, 4) // e.g., 0.19 for 19%
-  description     String?
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@unique([financialYear, isResident, minIncome])
-  @@index([financialYear, isActive])
-  @@index([isResident])
 }

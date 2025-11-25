@@ -35,9 +35,6 @@ export function LoginForm({
 
   type LoginFormValues = z.infer<typeof loginSchema>;
 
-  interface LoginFormSubmitEvent {
-    ev: React.FormEvent<HTMLFormElement>;
-  }
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
